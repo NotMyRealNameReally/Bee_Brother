@@ -1,126 +1,253 @@
 package com.example.beebrother
 
 import android.Manifest
+import android.content.ComponentName
+import android.content.Intent
+import android.content.ServiceConnection
 import android.os.Bundle
-import android.util.Log
-import android.view.WindowManager
+import android.os.IBinder
 import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.camera.core.CameraSelector
+import androidx.camera.compose.CameraXViewfinder
 import androidx.camera.core.Preview
-import androidx.camera.lifecycle.ProcessCameraProvider
-import androidx.camera.view.PreviewView
+import androidx.camera.core.SurfaceRequest
+import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.gestures.detectDragGestures
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.Button
+import androidx.compose.material3.Checkbox
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextField
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.viewinterop.AndroidView
-import androidx.core.content.ContextCompat
-import androidx.lifecycle.compose.LocalLifecycleOwner
+import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.beebrother.ui.theme.BeeBrotherTheme
+import kotlinx.coroutines.flow.MutableStateFlow
 
 class MainActivity : ComponentActivity() {
 
+    var monitoringService by mutableStateOf<MonitoringService?>(null)
+        private set
+    private var isBound by mutableStateOf(false)
+
+    private val connection = object : ServiceConnection {
+        override fun onServiceConnected(className: ComponentName, service: IBinder) {
+            val binder = service as MonitoringService.LocalBinder
+            monitoringService = binder.getService()
+            isBound = true
+        }
+
+        override fun onServiceDisconnected(arg0: ComponentName) {
+            isBound = false
+            monitoringService = null
+        }
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON) // capture works only with screen on
+
+        Intent(this, MonitoringService::class.java).also { intent ->
+            startForegroundService(intent)
+            bindService(intent, connection, BIND_AUTO_CREATE)
+        }
+
         setContent {
-            CheckCameraPermissions()
+            CheckCameraPermissionsAndInit()
             var visibleScreen by remember { mutableStateOf(Screen.MENU) }
+            val service = this.monitoringService
+
             BeeBrotherTheme {
                 Surface(
                     modifier = Modifier.fillMaxSize(),
                 ) {
                     when (visibleScreen) {
-                        Screen.MENU -> MainMenu { screen -> visibleScreen = screen }
-                        Screen.PREVIEW -> CameraPreviewView { screen -> visibleScreen = screen }
+                        Screen.MENU -> MainMenu(service) { screen -> visibleScreen = screen }
+                        Screen.PREVIEW -> CameraPreview(
+                            modifier = Modifier.fillMaxSize(),
+                            previewUseCase = service!!.previewUseCase
+                        ) { screen ->
+                            visibleScreen = screen
+                        }
                     }
                 }
             }
         }
     }
+
+    override fun onDestroy() {
+        super.onDestroy()
+        if (isBound) {
+            unbindService(connection)
+        }
+    }
 }
 
 @Composable
-fun CheckCameraPermissions() {
+fun CheckCameraPermissionsAndInit() {
     val context = LocalContext.current
+    val permissions =
+        arrayOf(Manifest.permission.CAMERA, Manifest.permission.POST_NOTIFICATIONS)
     val launcher = rememberLauncherForActivityResult(
-        ActivityResultContracts.RequestPermission()
-    ) { isGranted ->
-        if (!isGranted) Toast.makeText(
-            context,
-            "Camera permission is required",
-            Toast.LENGTH_SHORT
-        ).show()
+        ActivityResultContracts.RequestMultiplePermissions()
+    ) { grants ->
+        if (grants[Manifest.permission.CAMERA] == false) {
+            Toast.makeText(context, "Camera permission is required", Toast.LENGTH_SHORT).show()
+        }
     }
-    LaunchedEffect(Unit) {
-        launcher.launch(Manifest.permission.CAMERA)
-    }
+    LaunchedEffect(Unit) { launcher.launch(permissions) }
 }
 
 @Composable
-fun MainMenu(onSelectScreen: (Screen) -> Unit) {
-    val lifeCycleOwner = LocalLifecycleOwner.current
+fun MainMenu(service: MonitoringService?, onSelectScreen: (Screen) -> Unit) {
     val context = LocalContext.current
-    var isStarted by remember { mutableStateOf(false) }
-    var delay by remember { mutableIntStateOf(5) }
+    val config: ConfigViewModel = viewModel()
+
+    LaunchedEffect(service) {
+        service?.let {
+            config.imageCapture = it.imageCaptureUseCase
+        }
+    }
+
     Column(
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center
     ) {
-        Button(onClick = { onSelectScreen(Screen.PREVIEW) }) {
-            Text("Open camera preview")
+        if (!config.isStarted) {
+            Button(onClick = { onSelectScreen(Screen.PREVIEW) }) {
+                Text("Open camera preview")
+            }
         }
         Button(onClick = {
-            if (isStarted) {
+            if (config.isStarted) {
                 PeriodicCaptureController.stopCapture()
-                isStarted = false
+                config.isStarted = false
             } else {
-                PeriodicCaptureController.startCapture(lifeCycleOwner, context, delay)
-                isStarted = true
+                PeriodicCaptureController.startCapture(
+                    context,
+                    config
+                )
+                config.isStarted = true
             }
         }) {
-            if (isStarted) {
+            if (config.isStarted) {
                 Text("Stop")
             } else {
                 Text("Start")
             }
         }
-        DelayEditField(onDelayChange = { newDelay -> delay = newDelay }, delay.toString())
+        ConfigEditFields(
+            onDelayChange = { newDelay -> config.delay = newDelay },
+            config.delay.toString()
+        )
     }
 }
 
 @Composable
-fun CameraPreviewView(onSelectScreen: (Screen) -> Unit) {
+fun CameraPreview(
+    modifier: Modifier = Modifier,
+    previewUseCase: Preview,
+    onSelectScreen: (Screen) -> Unit
+) {
+    val config: ConfigViewModel = viewModel()
+
+    var draggingIndex by remember { mutableStateOf<Int?>(null) }
+
+    // Writer: MutableStateFlow we can update from CameraX callbacks
+    val surfaceRequests = remember { MutableStateFlow<SurfaceRequest?>(null) }
+
+    // Reader: Compose state derived from the flow
+    val surfaceRequest by surfaceRequests.collectAsState(initial = null)
+    LaunchedEffect(Unit) {
+        previewUseCase.apply {
+            setSurfaceProvider { request ->
+                surfaceRequests.value = request
+            }
+        }
+    }
+
     Box(modifier = Modifier.fillMaxSize()) {
-        CameraPreview()
-        Box(
+        surfaceRequest?.let { request ->
+            CameraXViewfinder(
+                surfaceRequest = request,
+                coordinateTransformer = config.coordinateTransformer,
+                modifier = modifier
+                    .fillMaxSize()
+                    .pointerInput(Unit) {
+                        detectTapGestures { offset ->
+                            val hit = findPointIndex(
+                                config.cropDrawPoints,
+                                offset,
+                                30f
+                            )
+                            if (hit == null) {
+                                config.cropDrawPoints.add(offset)
+                            } else {
+                                config.cropDrawPoints.removeAt(hit)
+                            }
+                        }
+                    }
+                    .pointerInput(Unit) {
+                        detectDragGestures(
+                            onDragStart = { offset ->
+                                draggingIndex = findPointIndex(
+                                    config.cropDrawPoints,
+                                    offset,
+                                    30f
+                                )
+                            },
+                            onDrag = { change, dragAmount ->
+                                draggingIndex?.let { index ->
+                                    config.cropDrawPoints[index] =
+                                        config.cropDrawPoints[index] + dragAmount
+                                    change.consume()
+                                }
+                            },
+                            onDragEnd = {
+                                draggingIndex = null
+                            },
+                            onDragCancel = {
+                                draggingIndex = null
+                            }
+                        )
+                    }
+            )
+        }
+        CropOverlay(points = config.cropDrawPoints)
+        Row(
             modifier = Modifier
                 .padding(16.dp)
                 .align(Alignment.BottomEnd)
         ) {
+            Button(
+                onClick = { transformAndSaveCrop(config) }
+            ) {
+                Text("Confirm crop")
+            }
             Button(
                 onClick = { onSelectScreen(Screen.MENU) }
             ) {
@@ -128,43 +255,64 @@ fun CameraPreviewView(onSelectScreen: (Screen) -> Unit) {
             }
         }
     }
+
 }
 
 @Composable
-fun CameraPreview() {
-    val lifecycleOwner = LocalLifecycleOwner.current
+fun CropOverlay(points: List<Offset>) {
 
-    AndroidView(
-        factory = { ctx ->
-            val previewView = PreviewView(ctx)
-            val cameraProviderFuture = ProcessCameraProvider.getInstance(ctx)
-
-            cameraProviderFuture.addListener({
-                val cameraProvider = cameraProviderFuture.get()
-                val preview = Preview.Builder().build().apply {
-                    surfaceProvider = previewView.surfaceProvider
+    Box(modifier = Modifier.fillMaxSize()) {
+        Canvas(modifier = Modifier.fillMaxSize()) {
+            if (points.size >= 3) {
+                val path = Path().apply {
+                    points.forEachIndexed { index, p ->
+                        if (index == 0) moveTo(p.x, p.y) else lineTo(p.x, p.y)
+                    }
+                    close()
                 }
-                val cameraSelector = CameraSelector.DEFAULT_BACK_CAMERA
-                try {
-                    cameraProvider.unbindAll()
-                    cameraProvider.bindToLifecycle(
-                        lifecycleOwner,
-                        cameraSelector,
-                        preview
-                    )
-                } catch (exc: Exception) {
-                    Log.e("CameraX", "Failed to launch preview", exc)
-                }
-            }, ContextCompat.getMainExecutor(ctx))
-
-            previewView
-        },
-        modifier = Modifier.fillMaxWidth()
-    )
+                drawPath(
+                    path = path,
+                    color = Color.Red.copy(alpha = 0.2f)
+                )
+            }
+            // Draw edges
+            for (i in 0 until points.size - 1) {
+                drawLine(
+                    color = Color.Red,
+                    start = points[i],
+                    end = points[i + 1],
+                    strokeWidth = 4f
+                )
+            }
+            // Close polygon
+            if (points.size >= 3) {
+                drawLine(
+                    color = Color.Red,
+                    start = points.last(),
+                    end = points.first(),
+                    strokeWidth = 4f
+                )
+            }
+            // Draw points
+            points.forEach { point ->
+                drawCircle(
+                    color = Color.White,
+                    radius = 10f + 4f,
+                    center = point
+                )
+                drawCircle(
+                    color = Color.Red,
+                    radius = 10f,
+                    center = point
+                )
+            }
+        }
+    }
 }
 
 @Composable
-fun DelayEditField(onDelayChange: (Int) -> Unit, initialDelay: String) {
+fun ConfigEditFields(onDelayChange: (Int) -> Unit, initialDelay: String) {
+    val config: ConfigViewModel = viewModel()
     var delayString by remember { mutableStateOf(initialDelay) }
     Column(
         horizontalAlignment = Alignment.CenterHorizontally,
@@ -175,9 +323,58 @@ fun DelayEditField(onDelayChange: (Int) -> Unit, initialDelay: String) {
             value = delayString,
             onValueChange = {
                 delayString = it
-                it.toIntOrNull()?.let { value -> onDelayChange(value)}
+                it.toIntOrNull()?.let { value -> onDelayChange(value) }
             },
             keyboardOptions = KeyboardOptions.Default.copy(keyboardType = KeyboardType.Number)
         )
+
+        Text(text = "Api url")
+        TextField(
+            value = config.url ?: "",
+            onValueChange = {
+                config.url = it
+            }
+        )
+        Text(text = "api key")
+        TextField(
+            value = config.apiKey ?: "",
+            onValueChange = {
+                config.apiKey = it
+            }
+        )
+        Text(text = "Hive id")
+        TextField(
+            value = config.hiveId ?: "",
+            onValueChange = {
+                config.hiveId = it
+            }
+        )
+        Text(text = "Enable local saving")
+        Checkbox(
+            checked = config.shouldSaveLocally,
+            onCheckedChange = { config.shouldSaveLocally = it }
+        )
+        Text(text = "Enable uploading")
+        Checkbox(
+            checked = config.shouldUpload,
+            onCheckedChange = { config.shouldUpload = it }
+        )
     }
+}
+
+fun transformAndSaveCrop(config: ConfigViewModel) {
+    config.cropPoints.clear()
+    for (point in config.cropDrawPoints) {
+        config.cropPoints.add(with(config.coordinateTransformer) { point.transform() })
+    }
+}
+
+fun findPointIndex(
+    points: List<Offset>,
+    touch: Offset,
+    hitRadius: Float
+): Int? {
+    return points.indexOfFirst {
+        (it - touch).getDistance() <= hitRadius
+    }.takeIf { it >= 0 }
 }
