@@ -24,8 +24,17 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Checkbox
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextField
@@ -126,11 +135,41 @@ fun CheckCameraPermissionsAndInit() {
 fun MainMenu(service: MonitoringService?, onSelectScreen: (Screen) -> Unit) {
     val context = LocalContext.current
     val config: ConfigViewModel = viewModel()
+    val presetsState = config.presets.collectAsState()
+
+    var showPresetDialog by remember { mutableStateOf(false) }
+    var presetNameInput by remember { mutableStateOf("") }
+    var expanded by remember { mutableStateOf(false) }
 
     LaunchedEffect(service) {
         service?.let {
             config.imageCapture = it.imageCaptureUseCase
         }
+    }
+
+    if (showPresetDialog) {
+        AlertDialog(
+            onDismissRequest = { showPresetDialog = false },
+            title = { Text("Save Preset") },
+            text = {
+                OutlinedTextField(
+                    value = presetNameInput,
+                    onValueChange = { presetNameInput = it },
+                    label = { Text("Preset Name") },
+                    singleLine = true
+                )
+            },
+            confirmButton = {
+                Button(onClick = {
+                    config.saveCurrentAsPreset(presetNameInput)
+                    presetNameInput = ""
+                    showPresetDialog = false
+                }) { Text("Save") }
+            },
+            dismissButton = {
+                Button(onClick = { showPresetDialog = false }) { Text("Cancel") }
+            }
+        )
     }
 
     Column(
@@ -164,6 +203,48 @@ fun MainMenu(service: MonitoringService?, onSelectScreen: (Screen) -> Unit) {
             onDelayChange = { newDelay -> config.delay = newDelay },
             config.delay.toString()
         )
+        Button(onClick = { expanded = true }) {
+            Text("Load Preset")
+        }
+        DropdownMenu(
+            expanded = expanded,
+            modifier = Modifier.align(Alignment.CenterHorizontally),
+            onDismissRequest = { expanded = false }
+        ) {
+            presetsState.value.presets.forEach { preset ->
+                DropdownMenuItem(
+                    text = { Text(preset.presetName) },
+                    onClick = {
+                        config.applyPreset(preset)
+                        expanded = false
+                    },
+                    trailingIcon = {
+                        IconButton(onClick = {
+                            // Stop the menu from closing when the icon is clicked
+                            // and delete the preset.
+                            config.deletePreset(preset.presetName)
+                        }) {
+                            Icon(
+                                Icons.Default.Delete,
+                                contentDescription = "Delete Preset",
+                                tint = MaterialTheme.colorScheme.error
+                            )
+
+                        }
+                    }
+                )
+            }
+            if (presetsState.value.presets.isEmpty()) {
+                DropdownMenuItem(
+                    text = { Text("No presets saved") },
+                    onClick = { expanded = false },
+                    enabled = false
+                )
+            }
+        }
+        Button(onClick = { showPresetDialog = true }) {
+            Text("Save Current as Preset")
+        }
     }
 }
 

@@ -15,6 +15,7 @@ interface ImageUploadApi {
     suspend fun uploadImage(
         @Url url: String,
         @Header("X-API-KEY") apiKey: String,
+        @Header("hiveId") hiveId: String,
         @Part file: MultipartBody.Part
     ): Response<Unit>
 }
