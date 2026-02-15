@@ -158,13 +158,8 @@ object PeriodicCaptureController {
     }
 
     fun saveBitmap(context: Context, bitmap: Bitmap, config: ConfigViewModel) {
-        var filename = ""
-        if (!config.hiveId.isNullOrBlank()) {
-            filename += config.hiveId + "_"
-        }
-        filename += "${
-            LocalDateTime.now().format(DateTimeFormatter.ofPattern("uuuuMMdd_HHmmss"))
-        }.png"
+        var filename =
+            "${LocalDateTime.now().format(DateTimeFormatter.ofPattern("uuuuMMdd_HHmmss"))}.png"
         val values = ContentValues().apply {
             put(
                 MediaStore.Images.Media.DISPLAY_NAME,
@@ -208,7 +203,7 @@ object PeriodicCaptureController {
                 body = requestBody
             )
             try {
-                val response = api.uploadImage(config.url!!, config.apiKey.orEmpty(), multiPart)
+                val response = api.uploadImage(config.url, config.apiKey, config.hiveId, multiPart)
                 if (response.isSuccessful) {
                     imageQueue.poll()
                     if (deleteOnSuccess) {
