@@ -11,6 +11,7 @@ import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
+import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.camera.compose.CameraXViewfinder
 import androidx.camera.core.Preview
@@ -24,7 +25,9 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material3.AlertDialog
@@ -36,6 +39,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextField
@@ -79,6 +83,7 @@ class MainActivity : ComponentActivity() {
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
+        enableEdgeToEdge()
         super.onCreate(savedInstanceState)
 
         Intent(this, MonitoringService::class.java).also { intent ->
@@ -188,81 +193,88 @@ fun MainMenu(service: MonitoringService?, onSelectScreen: (Screen) -> Unit) {
         )
     }
 
-    Column(
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.Center
-    ) {
-        if (!config.isStarted) {
-            Button(onClick = { onSelectScreen(Screen.PREVIEW) }) {
-                Text("Open camera preview")
-            }
-        }
-        Button(onClick = {
-            if (config.isStarted) {
-                PeriodicCaptureController.stopCapture()
-                config.isStarted = false
-            } else {
-                PeriodicCaptureController.startCapture(
-                    context,
-                    config
-                )
-                config.isStarted = true
-            }
-        }) {
-            if (config.isStarted) {
-                Text("Stop")
-            } else {
-                Text("Start")
-            }
-        }
-        ConfigEditFields(
-            onDelayChange = { newDelay -> config.delay = newDelay },
-            config.delay.toString()
-        )
-        Button(onClick = { expanded = true }) {
-            Text("Load Preset")
-        }
-        DropdownMenu(
-            expanded = expanded,
-            modifier = Modifier.align(Alignment.CenterHorizontally),
-            onDismissRequest = { expanded = false }
+    Scaffold { innerPadding ->
+        Column(
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.Center,
+            modifier = Modifier
+                .padding(innerPadding)
+                .fillMaxSize()
+                .verticalScroll(rememberScrollState())
+                .padding(vertical = 16.dp)
         ) {
-            presetsState.value.presets.forEach { preset ->
-                DropdownMenuItem(
-                    text = { Text(preset.presetName) },
-                    onClick = {
-                        config.applyPreset(preset)
-                        expanded = false
-                    },
-                    trailingIcon = {
-                        IconButton(onClick = {
-                            // Stop the menu from closing when the icon is clicked
-                            // and delete the preset.
-                            config.deletePreset(preset.presetName)
-                        }) {
-                            Icon(
-                                Icons.Default.Delete,
-                                contentDescription = "Delete Preset",
-                                tint = MaterialTheme.colorScheme.error
-                            )
+            if (!config.isStarted) {
+                Button(onClick = { onSelectScreen(Screen.PREVIEW) }) {
+                    Text("Open camera preview")
+                }
+            }
+            Button(onClick = {
+                if (config.isStarted) {
+                    PeriodicCaptureController.stopCapture()
+                    config.isStarted = false
+                } else {
+                    PeriodicCaptureController.startCapture(
+                        context,
+                        config
+                    )
+                    config.isStarted = true
+                }
+            }) {
+                if (config.isStarted) {
+                    Text("Stop")
+                } else {
+                    Text("Start")
+                }
+            }
+            ConfigEditFields(
+                onDelayChange = { newDelay -> config.delay = newDelay },
+                config.delay.toString()
+            )
+            Button(onClick = { expanded = true }) {
+                Text("Load Preset")
+            }
+            DropdownMenu(
+                expanded = expanded,
+                modifier = Modifier.align(Alignment.CenterHorizontally),
+                onDismissRequest = { expanded = false }
+            ) {
+                presetsState.value.presets.forEach { preset ->
+                    DropdownMenuItem(
+                        text = { Text(preset.presetName) },
+                        onClick = {
+                            config.applyPreset(preset)
+                            expanded = false
+                        },
+                        trailingIcon = {
+                            IconButton(onClick = {
+                                // Stop the menu from closing when the icon is clicked
+                                // and delete the preset.
+                                config.deletePreset(preset.presetName)
+                            }) {
+                                Icon(
+                                    Icons.Default.Delete,
+                                    contentDescription = "Delete Preset",
+                                    tint = MaterialTheme.colorScheme.error
+                                )
 
+                            }
                         }
-                    }
-                )
+                    )
+                }
+                if (presetsState.value.presets.isEmpty()) {
+                    DropdownMenuItem(
+                        text = { Text("No presets saved") },
+                        onClick = { expanded = false },
+                        enabled = false
+                    )
+                }
             }
-            if (presetsState.value.presets.isEmpty()) {
-                DropdownMenuItem(
-                    text = { Text("No presets saved") },
-                    onClick = { expanded = false },
-                    enabled = false
-                )
+            Button(onClick = { showPresetDialog = true }) {
+                Text("Save Current as Preset")
             }
-        }
-        Button(onClick = { showPresetDialog = true }) {
-            Text("Save Current as Preset")
-        }
-        Button(onClick = { activity?.exitApplication() }) {
-            Text("Exit Application")
+            Button(onClick = { activity?.exitApplication() }) {
+                Text("Exit Application")
+            }
         }
     }
 }
@@ -290,6 +302,7 @@ fun CameraPreview(
         }
     }
 
+    Scaffold(containerColor = Color.Transparent) { innerPadding ->
     Box(modifier = Modifier.fillMaxSize()) {
         surfaceRequest?.let { request ->
             CameraXViewfinder(
@@ -340,7 +353,7 @@ fun CameraPreview(
         CropOverlay(points = config.cropDrawPoints)
         Row(
             modifier = Modifier
-                .padding(16.dp)
+                .padding(innerPadding)
                 .align(Alignment.BottomEnd)
         ) {
             Button(
@@ -354,6 +367,7 @@ fun CameraPreview(
                 Text("Back")
             }
         }
+    }
     }
 
 }
