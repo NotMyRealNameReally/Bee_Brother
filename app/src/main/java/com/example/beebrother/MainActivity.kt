@@ -1,6 +1,7 @@
 package com.example.beebrother
 
 import android.Manifest
+import android.annotation.SuppressLint
 import android.content.ComponentName
 import android.content.Intent
 import android.content.ServiceConnection
@@ -114,6 +115,19 @@ class MainActivity : ComponentActivity() {
             unbindService(connection)
         }
     }
+
+    fun exitApplication() {
+        if (isBound) {
+            unbindService(connection)
+            isBound = false
+        }
+
+        val serviceIntent = Intent(this, MonitoringService::class.java)
+        stopService(serviceIntent)
+        PeriodicCaptureController.stopCapture()
+        finishAndRemoveTask()
+        android.os.Process.killProcess(android.os.Process.myPid())
+    }
 }
 
 @Composable
@@ -131,9 +145,11 @@ fun CheckCameraPermissionsAndInit() {
     LaunchedEffect(Unit) { launcher.launch(permissions) }
 }
 
+@SuppressLint("ContextCastToActivity")
 @Composable
 fun MainMenu(service: MonitoringService?, onSelectScreen: (Screen) -> Unit) {
     val context = LocalContext.current
+    val activity = (LocalContext.current as? MainActivity)
     val config: ConfigViewModel = viewModel()
     val presetsState = config.presets.collectAsState()
 
@@ -245,6 +261,9 @@ fun MainMenu(service: MonitoringService?, onSelectScreen: (Screen) -> Unit) {
         Button(onClick = { showPresetDialog = true }) {
             Text("Save Current as Preset")
         }
+        Button(onClick = { activity?.exitApplication() }) {
+            Text("Exit Application")
+        }
     }
 }
 
@@ -283,7 +302,7 @@ fun CameraPreview(
                             val hit = findPointIndex(
                                 config.cropDrawPoints,
                                 offset,
-                                30f
+                                70f
                             )
                             if (hit == null) {
                                 config.cropDrawPoints.add(offset)
@@ -298,7 +317,7 @@ fun CameraPreview(
                                 draggingIndex = findPointIndex(
                                     config.cropDrawPoints,
                                     offset,
-                                    30f
+                                    70f
                                 )
                             },
                             onDrag = { change, dragAmount ->
@@ -411,21 +430,21 @@ fun ConfigEditFields(onDelayChange: (Int) -> Unit, initialDelay: String) {
 
         Text(text = "Api url")
         TextField(
-            value = config.url ?: "",
+            value = config.url,
             onValueChange = {
                 config.url = it
             }
         )
         Text(text = "api key")
         TextField(
-            value = config.apiKey ?: "",
+            value = config.apiKey,
             onValueChange = {
                 config.apiKey = it
             }
         )
         Text(text = "Hive id")
         TextField(
-            value = config.hiveId ?: "",
+            value = config.hiveId,
             onValueChange = {
                 config.hiveId = it
             }
