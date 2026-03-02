@@ -69,10 +69,17 @@ object PeriodicCaptureController {
         }
     }
 
-    fun stopCapture() {
+    fun stopCapture(
+        context: Context,
+        config: ConfigViewModel
+    ) {
         captureJob?.cancel()
         saveAndUploadJob?.cancel()
-        // TODO should resolve all pending when closing
+        if (!config.shouldSaveLocally) {
+            while (imageQueue.isNotEmpty()) {
+                context.contentResolver.delete(imageQueue.poll()!!, null, null)
+            }
+        }
         imageQueue.clear()
     }
 

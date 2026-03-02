@@ -3,6 +3,7 @@ package com.example.beebrother
 import android.Manifest
 import android.annotation.SuppressLint
 import android.content.ComponentName
+import android.content.Context
 import android.content.Intent
 import android.content.ServiceConnection
 import android.os.Bundle
@@ -121,7 +122,7 @@ class MainActivity : ComponentActivity() {
         }
     }
 
-    fun exitApplication() {
+    fun exitApplication(context: Context, config: ConfigViewModel) {
         if (isBound) {
             unbindService(connection)
             isBound = false
@@ -129,7 +130,7 @@ class MainActivity : ComponentActivity() {
 
         val serviceIntent = Intent(this, MonitoringService::class.java)
         stopService(serviceIntent)
-        PeriodicCaptureController.stopCapture()
+        PeriodicCaptureController.stopCapture(context, config)
         finishAndRemoveTask()
         android.os.Process.killProcess(android.os.Process.myPid())
     }
@@ -210,7 +211,7 @@ fun MainMenu(service: MonitoringService?, onSelectScreen: (Screen) -> Unit) {
             }
             Button(onClick = {
                 if (config.isStarted) {
-                    PeriodicCaptureController.stopCapture()
+                    PeriodicCaptureController.stopCapture(context, config)
                     config.isStarted = false
                 } else {
                     PeriodicCaptureController.startCapture(
@@ -272,7 +273,7 @@ fun MainMenu(service: MonitoringService?, onSelectScreen: (Screen) -> Unit) {
             Button(onClick = { showPresetDialog = true }) {
                 Text("Save Current as Preset")
             }
-            Button(onClick = { activity?.exitApplication() }) {
+            Button(onClick = { activity?.exitApplication(context, config) }) {
                 Text("Exit Application")
             }
         }
