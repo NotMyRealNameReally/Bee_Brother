@@ -18,24 +18,45 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.camera.compose.CameraXViewfinder
 import androidx.camera.core.SurfaceRequest
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.IntrinsicSize
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.wrapContentSize
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ExitToApp
+import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.BottomAppBar
 import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -43,7 +64,6 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextField
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -59,6 +79,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
@@ -108,7 +129,10 @@ class MainActivity : ComponentActivity() {
                         Screen.PREVIEW -> CameraPreview(
                             modifier = Modifier.fillMaxSize(),
                             monitoringService = service!!
-                        ) { screen ->
+                        ) { screen -> visibleScreen = screen }
+
+                        Screen.SETTINGS -> SettingsScreen() { screen -> visibleScreen = screen }
+                        Screen.CAPTURE_STATUS -> CaptureStatusScreen() { screen ->
                             visibleScreen = screen
                         }
                     }
@@ -159,119 +183,82 @@ fun MainMenu(service: MonitoringService?, onSelectScreen: (Screen) -> Unit) {
     val context = LocalContext.current
     val activity = (LocalContext.current as? MainActivity)
     val config: ConfigViewModel = viewModel()
-    val presetsState = config.presets.collectAsState()
 
-    var showPresetDialog by remember { mutableStateOf(false) }
-    var presetNameInput by remember { mutableStateOf("") }
-    var expanded by remember { mutableStateOf(false) }
-
-    if (showPresetDialog) {
-        AlertDialog(
-            onDismissRequest = { showPresetDialog = false },
-            title = { Text("Save Preset") },
-            text = {
-                OutlinedTextField(
-                    value = presetNameInput,
-                    onValueChange = { presetNameInput = it },
-                    label = { Text("Preset Name") },
-                    singleLine = true
-                )
-            },
-            confirmButton = {
-                Button(onClick = {
-                    config.saveCurrentAsPreset(presetNameInput)
-                    presetNameInput = ""
-                    showPresetDialog = false
-                }) { Text("Save") }
-            },
-            dismissButton = {
-                Button(onClick = { showPresetDialog = false }) { Text("Cancel") }
+    Scaffold(
+        bottomBar = {
+            BottomAppBar(
+                containerColor = Color.Transparent,
+                contentPadding = PaddingValues(horizontal = 16.dp),
+            ) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.Center
+                ) {
+                    Button(
+                        onClick = { activity?.exitApplication(context, config) },
+                        modifier = Modifier.fillMaxWidth(0.7f),
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = MaterialTheme.colorScheme.error
+                        )
+                    ) {
+                        Icon(Icons.AutoMirrored.Filled.ExitToApp, contentDescription = null)
+                        Spacer(Modifier.width(8.dp))
+                        Text("Exit Application")
+                    }
+                }
             }
-        )
-    }
-
-    Scaffold { innerPadding ->
+        }
+    ) { innerPadding ->
         Column(
             horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.Center,
+            verticalArrangement = Arrangement.Top,
             modifier = Modifier
                 .padding(innerPadding)
                 .fillMaxSize()
                 .verticalScroll(rememberScrollState())
                 .padding(vertical = 16.dp)
         ) {
-            if (!config.isStarted) {
-                Button(onClick = { onSelectScreen(Screen.PREVIEW) }) {
-                    Text("Open camera preview")
-                }
+            val buttonModifier = Modifier.fillMaxWidth(0.7f)
+
+            Button(onClick = { onSelectScreen(Screen.PREVIEW) }, buttonModifier) {
+                Text("Open camera preview")
             }
             Button(onClick = {
-                if (config.isStarted) {
-                    PeriodicCaptureController.stopCapture(context, config)
-                    config.isStarted = false
-                } else {
-                    PeriodicCaptureController.startCapture(
-                        context,
-                        config,
-                        service!!
-                    )
-                    config.isStarted = true
-                }
-            }) {
-                if (config.isStarted) {
-                    Text("Stop")
-                } else {
-                    Text("Start")
-                }
+                PeriodicCaptureController.startCapture(context, config, service!!)
+                onSelectScreen(Screen.CAPTURE_STATUS)
+            }, buttonModifier) {
+                Text("Start")
             }
-            ConfigEditFields(
-                onDelayChange = { newDelay -> config.delay = newDelay },
-                config.delay.toString()
-            )
-            Button(onClick = { expanded = true }) {
-                Text("Load Preset")
-            }
-            DropdownMenu(
-                expanded = expanded,
-                modifier = Modifier.align(Alignment.CenterHorizontally),
-                onDismissRequest = { expanded = false }
-            ) {
-                presetsState.value.presets.forEach { preset ->
-                    DropdownMenuItem(
-                        text = { Text(preset.presetName) },
-                        onClick = {
-                            config.applyPreset(preset)
-                            expanded = false
-                        },
-                        trailingIcon = {
-                            IconButton(onClick = {
-                                // Stop the menu from closing when the icon is clicked
-                                // and delete the preset.
-                                config.deletePreset(preset.presetName)
-                            }) {
-                                Icon(
-                                    Icons.Default.Delete,
-                                    contentDescription = "Delete Preset",
-                                    tint = MaterialTheme.colorScheme.error
-                                )
 
-                            }
-                        }
-                    )
-                }
-                if (presetsState.value.presets.isEmpty()) {
-                    DropdownMenuItem(
-                        text = { Text("No presets saved") },
-                        onClick = { expanded = false },
-                        enabled = false
-                    )
-                }
+            Button(onClick = { onSelectScreen(Screen.SETTINGS) }, buttonModifier) {
+                Text("Upload Settings")
             }
-            Button(onClick = { showPresetDialog = true }) {
-                Text("Save Current as Preset")
+
+            Spacer(modifier = Modifier.height(24.dp))
+
+            Text(text = "Capture interval in seconds:")
+            OutlinedTextField(
+                value = config.delay.toString(),
+                onValueChange = {
+                    it.toIntOrNull()?.let { value -> config.delay = value }
+                },
+                keyboardOptions = KeyboardOptions.Default.copy(keyboardType = KeyboardType.Number)
+            )
+
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Checkbox(
+                    checked = config.shouldSaveLocally,
+                    onCheckedChange = { config.shouldSaveLocally = it }
+                )
+                Text(text = "Enable local saving")
             }
-            Button(onClick = { activity?.exitApplication(context, config) }) {
-                Text("Exit Application")
+
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Checkbox(
+                    checked = config.shouldUpload,
+                    onCheckedChange = { config.shouldUpload = it }
+                )
+                Text(text = "Enable uploading")
             }
         }
     }
@@ -307,73 +294,79 @@ fun CameraPreview(
     }
 
     Scaffold(containerColor = Color.Transparent) { innerPadding ->
-    Box(modifier = Modifier.fillMaxSize()) {
-        surfaceRequest?.let { request ->
-            CameraXViewfinder(
-                surfaceRequest = request,
-                coordinateTransformer = config.coordinateTransformer,
-                modifier = modifier
-                    .fillMaxSize()
-                    .pointerInput(Unit) {
-                        detectTapGestures { offset ->
-                            val hit = findPointIndex(
-                                config.cropDrawPoints,
-                                offset,
-                                70f
-                            )
-                            if (hit == null) {
-                                config.cropDrawPoints.add(offset)
-                            } else {
-                                config.cropDrawPoints.removeAt(hit)
-                            }
-                        }
-                    }
-                    .pointerInput(Unit) {
-                        detectDragGestures(
-                            onDragStart = { offset ->
-                                draggingIndex = findPointIndex(
+        Box(modifier = Modifier.fillMaxSize()) {
+            surfaceRequest?.let { request ->
+                CameraXViewfinder(
+                    surfaceRequest = request,
+                    coordinateTransformer = config.coordinateTransformer,
+                    modifier = modifier
+                        .fillMaxSize()
+                        .pointerInput(Unit) {
+                            detectTapGestures { offset ->
+                                val hit = findPointIndex(
                                     config.cropDrawPoints,
                                     offset,
                                     70f
                                 )
-                            },
-                            onDrag = { change, dragAmount ->
-                                draggingIndex?.let { index ->
-                                    config.cropDrawPoints[index] =
-                                        config.cropDrawPoints[index] + dragAmount
-                                    change.consume()
+                                if (hit == null) {
+                                    config.cropDrawPoints.add(offset)
+                                } else {
+                                    config.cropDrawPoints.removeAt(hit)
                                 }
-                            },
-                            onDragEnd = {
-                                draggingIndex = null
-                            },
-                            onDragCancel = {
-                                draggingIndex = null
                             }
-                        )
+                        }
+                        .pointerInput(Unit) {
+                            detectDragGestures(
+                                onDragStart = { offset ->
+                                    draggingIndex = findPointIndex(
+                                        config.cropDrawPoints,
+                                        offset,
+                                        70f
+                                    )
+                                },
+                                onDrag = { change, dragAmount ->
+                                    draggingIndex?.let { index ->
+                                        config.cropDrawPoints[index] =
+                                            config.cropDrawPoints[index] + dragAmount
+                                        change.consume()
+                                    }
+                                },
+                                onDragEnd = {
+                                    draggingIndex = null
+                                },
+                                onDragCancel = {
+                                    draggingIndex = null
+                                }
+                            )
+                        }
+                )
+            }
+            CropOverlay(points = config.cropDrawPoints)
+            Row(
+                modifier = Modifier
+                    .padding(innerPadding)
+                    .align(Alignment.BottomEnd)
+            ) {
+                Button(
+                    onClick = {
+                        config.cropDrawPoints.clear()
+                        config.cropPoints.clear()
+                    },
+                    enabled = config.cropDrawPoints.isNotEmpty(),
+                ) {
+                    Text("Clear")
+                }
+                Button(
+                    onClick = {
+                        transformAndSaveCrop(config)
+                        onSelectScreen(Screen.MENU)
                     }
-            )
-        }
-        CropOverlay(points = config.cropDrawPoints)
-        Row(
-            modifier = Modifier
-                .padding(innerPadding)
-                .align(Alignment.BottomEnd)
-        ) {
-            Button(
-                onClick = { transformAndSaveCrop(config) }
-            ) {
-                Text("Confirm crop")
-            }
-            Button(
-                onClick = { onSelectScreen(Screen.MENU) }
-            ) {
-                Text("Back")
+                ) {
+                    Text("Back")
+                }
             }
         }
     }
-    }
-
 }
 
 @Composable
@@ -429,53 +422,330 @@ fun CropOverlay(points: List<Offset>) {
 }
 
 @Composable
-fun ConfigEditFields(onDelayChange: (Int) -> Unit, initialDelay: String) {
+fun SettingsScreen(onSelectScreen: (Screen) -> Unit) {
     val config: ConfigViewModel = viewModel()
-    var delayString by remember { mutableStateOf(initialDelay) }
+    val presetsState = config.presets.collectAsState()
+
+    var showPresetDialog by remember { mutableStateOf(false) }
+    var presetNameInput by remember { mutableStateOf("") }
+    var expanded by remember { mutableStateOf(false) }
+
+    if (showPresetDialog) {
+        AlertDialog(
+            onDismissRequest = { showPresetDialog = false },
+            title = { Text("Save Preset") },
+            text = {
+                OutlinedTextField(
+                    value = presetNameInput,
+                    onValueChange = { presetNameInput = it },
+                    label = { Text("Preset Name") },
+                    singleLine = true
+                )
+            },
+            confirmButton = {
+                Button(onClick = {
+                    config.saveCurrentAsPreset(presetNameInput)
+                    presetNameInput = ""
+                    showPresetDialog = false
+                }) { Text("Save") }
+            },
+            dismissButton = {
+                Button(onClick = { showPresetDialog = false }) { Text("Cancel") }
+            }
+        )
+    }
+    Scaffold { innerPadding ->
+        Column(
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.Center,
+            modifier = Modifier
+                .padding(innerPadding)
+                .fillMaxSize()
+                .verticalScroll(rememberScrollState())
+                .padding(vertical = 16.dp)
+        ) {
+            val buttonModifier = Modifier.fillMaxWidth(0.7f)
+            UploadEditFields()
+            Box(modifier = Modifier.wrapContentSize(Alignment.Center)) {
+                Button(
+                    onClick = { expanded = true },
+                    modifier = buttonModifier
+                ) {
+                    Text("Load Preset")
+                }
+
+                DropdownMenu(
+                    expanded = expanded,
+                    onDismissRequest = { expanded = false },
+                    modifier = Modifier.width(IntrinsicSize.Max)
+                ) {
+                    presetsState.value.presets.forEach { preset ->
+                        DropdownMenuItem(
+                            text = { Text(preset.presetName) },
+                            onClick = {
+                                config.applyPreset(preset)
+                                expanded = false
+                            },
+                            trailingIcon = {
+                                IconButton(onClick = {
+                                    config.deletePreset(preset.presetName)
+                                }) {
+                                    Icon(
+                                        Icons.Default.Delete,
+                                        contentDescription = "Delete Preset",
+                                        tint = MaterialTheme.colorScheme.error
+                                    )
+                                }
+                            }
+                        )
+                    }
+
+                    if (presetsState.value.presets.isEmpty()) {
+                        DropdownMenuItem(
+                            text = { Text("No presets saved") },
+                            onClick = { expanded = false },
+                            enabled = false
+                        )
+                    }
+                }
+            }
+            Button(onClick = { showPresetDialog = true }, buttonModifier) {
+                Text("Save Current as Preset")
+            }
+            Button(onClick = { onSelectScreen(Screen.MENU) }, buttonModifier) {
+                Text("Back")
+            }
+        }
+    }
+}
+
+@Composable
+fun CaptureStatusScreen(onSelectScreen: (Screen) -> Unit) {
+    val config: ConfigViewModel = viewModel()
+    val context = LocalContext.current
+    val history by config.uploadHistory.collectAsState()
+
+    Scaffold(
+        bottomBar = {
+            BottomAppBar(containerColor = Color.Transparent) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.Center
+                ) {
+                    Button(
+                        onClick = {
+                            PeriodicCaptureController.stopCapture(context, config)
+                            onSelectScreen(Screen.MENU)
+                        },
+                        modifier = Modifier.fillMaxWidth(0.7f),
+                        colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)
+                    ) {
+                        Text("Stop Capture")
+                    }
+                }
+            }
+        }
+    ) { innerPadding ->
+        Column(
+            modifier = Modifier
+                .padding(innerPadding)
+                .fillMaxSize()
+                .padding(horizontal = 16.dp)
+        ) {
+            Spacer(modifier = Modifier.height(16.dp))
+            Column(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                Icon(
+                    Icons.Default.CheckCircle,
+                    contentDescription = null,
+                    tint = Color(0xFF4CAF50),
+                    modifier = Modifier.size(64.dp)
+                )
+                Text("Capture is Active", style = MaterialTheme.typography.headlineMedium)
+                Text("Interval: ${config.delay}s", style = MaterialTheme.typography.bodyLarge)
+            }
+            Spacer(modifier = Modifier.height(12.dp))
+
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                colors = CardDefaults.cardColors(
+                    containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
+                )
+            ) {
+                Column(
+                    modifier = Modifier.padding(16.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Text(
+                        "Configuration Summary",
+                        style = MaterialTheme.typography.titleSmall,
+                        color = MaterialTheme.colorScheme.primary
+                    )
+                    StatusRow(
+                        label = "Local Saving",
+                        isActive = config.shouldSaveLocally,
+                        activeText = "Enabled",
+                        inactiveText = "Disabled"
+                    )
+                    StatusRow(
+                        label = "Cropping",
+                        isActive = config.cropPoints.isNotEmpty(),
+                        activeText = "Active (${config.cropPoints.size} points)",
+                        inactiveText = "Disabled"
+                    )
+                    StatusRow(
+                        label = "Remote Upload",
+                        isActive = config.shouldUpload,
+                        activeText = "Enabled",
+                        inactiveText = "Disabled"
+                    )
+                    if (config.shouldUpload) {
+                        HorizontalDivider(
+                            modifier = Modifier.padding(vertical = 4.dp),
+                            thickness = 0.5.dp
+                        )
+                        Text("URL: ${config.url}", style = MaterialTheme.typography.bodySmall)
+                        if (config.hiveId.isNotEmpty()) {
+                            Text(
+                                "Hive ID: ${config.hiveId}",
+                                style = MaterialTheme.typography.bodySmall
+                            )
+                        }
+                    }
+                }
+            }
+            Spacer(modifier = Modifier.height(16.dp))
+
+            if (config.shouldUpload) {
+                Text("Last 5 Uploads", style = MaterialTheme.typography.titleLarge)
+
+                LazyColumn(
+                    modifier = Modifier
+                        .weight(1f)
+                        .fillMaxWidth(),
+                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                    contentPadding = PaddingValues(bottom = 16.dp)
+                ) {
+                    if (history.isEmpty()) {
+                        item {
+                            Text(
+                                "Waiting for first capture...",
+                                color = Color.Gray,
+                                modifier = Modifier.padding(top = 8.dp)
+                            )
+                        }
+                    }
+                    items(history) { log ->
+                        UploadHistoryItem(log)
+                    }
+                }
+            } else {
+                Spacer(modifier = Modifier.weight(1f))
+            }
+        }
+    }
+}
+
+@Composable
+fun StatusRow(label: String, isActive: Boolean, activeText: String, inactiveText: String) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Text(
+            text = label,
+            style = MaterialTheme.typography.bodyMedium,
+            fontWeight = FontWeight.Bold
+        )
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            val color = if (isActive) Color(0xFF4CAF50) else Color.Gray
+            Box(
+                modifier = Modifier
+                    .size(8.dp)
+                    .background(color, shape = CircleShape)
+            )
+            Spacer(Modifier.width(8.dp))
+            Text(
+                text = if (isActive) activeText else inactiveText,
+                style = MaterialTheme.typography.bodyMedium,
+                color = color
+            )
+        }
+    }
+}
+
+@Composable
+fun UploadHistoryItem(log: UploadLog) {
+    val sdf = remember { java.text.SimpleDateFormat("HH:mm:ss", java.util.Locale.getDefault()) }
+    val timeString = sdf.format(java.util.Date(log.timestamp))
+
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 4.dp),
+        colors = CardDefaults.cardColors(
+            containerColor = if (log.isSuccess) Color(0xFFE8F5E9) else Color(0xFFFFEBEE)
+        )
+    ) {
+        Row(
+            modifier = Modifier.padding(12.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Icon(
+                imageVector = if (log.isSuccess) Icons.Default.Check else Icons.Default.Warning,
+                contentDescription = null,
+                tint = if (log.isSuccess) Color(0xFF2E7D32) else Color(0xFFC62828)
+            )
+            Spacer(modifier = Modifier.width(12.dp))
+            Column {
+                Text(
+                    text = if (log.isSuccess) "Upload Successful" else "Upload Failed",
+                    style = MaterialTheme.typography.bodyLarge,
+                    fontWeight = FontWeight.Bold
+                )
+                Text(text = "Time: $timeString", style = MaterialTheme.typography.bodySmall)
+                if (!log.isSuccess && log.errorMessage != null) {
+                    Text(
+                        text = log.errorMessage,
+                        color = Color.Red,
+                        style = MaterialTheme.typography.labelSmall
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun UploadEditFields() {
+    val config: ConfigViewModel = viewModel()
     Column(
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center
     ) {
-        Text(text = "Capture interval in seconds:")
-        TextField(
-            value = delayString,
-            onValueChange = {
-                delayString = it
-                it.toIntOrNull()?.let { value -> onDelayChange(value) }
-            },
-            keyboardOptions = KeyboardOptions.Default.copy(keyboardType = KeyboardType.Number)
-        )
-
         Text(text = "Api url")
-        TextField(
+        OutlinedTextField(
             value = config.url,
             onValueChange = {
                 config.url = it
             }
         )
         Text(text = "api key")
-        TextField(
+        OutlinedTextField(
             value = config.apiKey,
             onValueChange = {
                 config.apiKey = it
             }
         )
         Text(text = "Hive id")
-        TextField(
+        OutlinedTextField(
             value = config.hiveId,
             onValueChange = {
                 config.hiveId = it
             }
-        )
-        Text(text = "Enable local saving")
-        Checkbox(
-            checked = config.shouldSaveLocally,
-            onCheckedChange = { config.shouldSaveLocally = it }
-        )
-        Text(text = "Enable uploading")
-        Checkbox(
-            checked = config.shouldUpload,
-            onCheckedChange = { config.shouldUpload = it }
         )
     }
 }

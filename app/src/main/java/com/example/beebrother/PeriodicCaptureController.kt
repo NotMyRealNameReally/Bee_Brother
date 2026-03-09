@@ -219,12 +219,14 @@ object PeriodicCaptureController {
             try {
                 val response = api.uploadImage(config.url, config.apiKey, config.hiveId, multiPart)
                 if (response.isSuccessful) {
+                    config.addUploadLog(true)
                     imageQueue.poll()
                     if (deleteOnSuccess) {
                         context.contentResolver.delete(uri, null, null)
                     }
                     Log.d(TAG, "Uploaded image: $fileName")
                 } else {
+                    config.addUploadLog(false, response.errorBody()?.string())
                     Log.e(TAG, "Upload failed: ${response.code()}")
                     break // stop retry loop, keep image
                 }

@@ -13,6 +13,7 @@ import androidx.lifecycle.viewModelScope
 import com.example.beebrother.presets.Preset
 import com.example.beebrother.presets.PresetList
 import com.example.beebrother.presets.PresetRepository
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
@@ -20,6 +21,7 @@ import kotlinx.coroutines.launch
 class ConfigViewModel(application: Application) : AndroidViewModel(application) {
 
     private val presetRepository = PresetRepository(application)
+    val uploadHistory = MutableStateFlow<List<UploadLog>>(emptyList())
     var isStarted by mutableStateOf(false)
 
     var delay by mutableIntStateOf(5)
@@ -71,5 +73,10 @@ class ConfigViewModel(application: Application) : AndroidViewModel(application) 
         viewModelScope.launch {
             presetRepository.deletePreset(presetName)
         }
+    }
+
+    fun addUploadLog(success: Boolean, error: String? = null) {
+        val newLog = UploadLog(System.currentTimeMillis(), success, error)
+        uploadHistory.value = (listOf(newLog) + uploadHistory.value).take(5)
     }
 }
