@@ -6,6 +6,7 @@ import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
 import android.content.ServiceConnection
+import android.content.pm.ActivityInfo
 import android.os.Bundle
 import android.os.IBinder
 import android.widget.Toast
@@ -15,7 +16,6 @@ import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.camera.compose.CameraXViewfinder
-import androidx.camera.core.Preview
 import androidx.camera.core.SurfaceRequest
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.gestures.detectDragGestures
@@ -45,6 +45,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextField
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -86,6 +87,7 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         enableEdgeToEdge()
         super.onCreate(savedInstanceState)
+        requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
 
         Intent(this, MonitoringService::class.java).also { intent ->
             startForegroundService(intent)
@@ -105,7 +107,7 @@ class MainActivity : ComponentActivity() {
                         Screen.MENU -> MainMenu(service) { screen -> visibleScreen = screen }
                         Screen.PREVIEW -> CameraPreview(
                             modifier = Modifier.fillMaxSize(),
-                            previewUseCase = service!!.previewUseCase
+                            monitoringService = service!!
                         ) { screen ->
                             visibleScreen = screen
                         }
@@ -163,12 +165,6 @@ fun MainMenu(service: MonitoringService?, onSelectScreen: (Screen) -> Unit) {
     var presetNameInput by remember { mutableStateOf("") }
     var expanded by remember { mutableStateOf(false) }
 
-    LaunchedEffect(service) {
-        service?.let {
-            config.imageCapture = it.imageCaptureUseCase
-        }
-    }
-
     if (showPresetDialog) {
         AlertDialog(
             onDismissRequest = { showPresetDialog = false },
@@ -216,7 +212,8 @@ fun MainMenu(service: MonitoringService?, onSelectScreen: (Screen) -> Unit) {
                 } else {
                     PeriodicCaptureController.startCapture(
                         context,
-                        config
+                        config,
+                        service!!
                     )
                     config.isStarted = true
                 }
@@ -283,9 +280,14 @@ fun MainMenu(service: MonitoringService?, onSelectScreen: (Screen) -> Unit) {
 @Composable
 fun CameraPreview(
     modifier: Modifier = Modifier,
-    previewUseCase: Preview,
+    monitoringService: MonitoringService,
     onSelectScreen: (Screen) -> Unit
 ) {
+    DisposableEffect(Unit) {
+        onDispose {
+            monitoringService.unbindPreview()
+        }
+    }
     val config: ConfigViewModel = viewModel()
 
     var draggingIndex by remember { mutableStateOf<Int?>(null) }
@@ -296,7 +298,8 @@ fun CameraPreview(
     // Reader: Compose state derived from the flow
     val surfaceRequest by surfaceRequests.collectAsState(initial = null)
     LaunchedEffect(Unit) {
-        previewUseCase.apply {
+        monitoringService.bindPreview()
+        monitoringService.previewUseCase.apply {
             setSurfaceProvider { request ->
                 surfaceRequests.value = request
             }

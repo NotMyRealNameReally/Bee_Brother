@@ -7,7 +7,7 @@ import android.app.Service
 import android.content.Intent
 import android.os.Binder
 import android.os.IBinder
-import android.util.Log
+import android.view.Surface
 import androidx.camera.core.CameraSelector
 import androidx.camera.core.ImageCapture
 import androidx.camera.core.Preview
@@ -17,7 +17,6 @@ import androidx.core.content.ContextCompat
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleOwner
 import androidx.lifecycle.LifecycleRegistry
-import com.google.common.util.concurrent.ListenableFuture
 
 class MonitoringService : Service(), LifecycleOwner {
 
@@ -26,41 +25,40 @@ class MonitoringService : Service(), LifecycleOwner {
         const val CHANNEL_ID = "BeeBrotherMonitoringChannel"
     }
 
+    lateinit var cameraProvider: ProcessCameraProvider
+    val previewUseCase: Preview = Preview.Builder().setTargetRotation(Surface.ROTATION_0).build()
+    val imageCaptureUseCase: ImageCapture =
+        ImageCapture.Builder().setTargetRotation(Surface.ROTATION_0).build()
+
     private val lifecycleRegistry = LifecycleRegistry(this)
     override val lifecycle: Lifecycle get() = lifecycleRegistry
-
     private val binder = LocalBinder()
-
-    inner class LocalBinder : Binder() {
-        fun getService(): MonitoringService = this@MonitoringService
-    }
-
-    lateinit var cameraProviderFuture: ListenableFuture<ProcessCameraProvider>
-    val previewUseCase: Preview = Preview.Builder().build()
-    val imageCaptureUseCase: ImageCapture = ImageCapture.Builder().build()
 
     override fun onCreate() {
         super.onCreate()
         lifecycleRegistry.currentState = Lifecycle.State.CREATED
-        cameraProviderFuture = ProcessCameraProvider.getInstance(this)
-        cameraProviderFuture.addListener({
-            val cameraProvider = cameraProviderFuture.get()
-            bindCameraUseCases(cameraProvider)
-        }, ContextCompat.getMainExecutor(this))
-    }
-
-    private fun bindCameraUseCases(cameraProvider: ProcessCameraProvider) {
-        try {
+        val cameraFuture = ProcessCameraProvider.getInstance(this)
+        cameraFuture.addListener({
+            cameraProvider = cameraFuture.get()
             cameraProvider.unbindAll()
             cameraProvider.bindToLifecycle(
                 this, // The service is the LifecycleOwner
                 CameraSelector.DEFAULT_BACK_CAMERA,
-                previewUseCase,
                 imageCaptureUseCase
             )
-        } catch (e: Exception) {
-            Log.e("Unable to bind camera use cases", "", e)
-        }
+        }, ContextCompat.getMainExecutor(this))
+    }
+
+    fun unbindPreview() {
+        cameraProvider.unbind(previewUseCase)
+    }
+
+    fun bindPreview() {
+        cameraProvider.bindToLifecycle(
+            this,
+            CameraSelector.DEFAULT_BACK_CAMERA,
+            previewUseCase
+        )
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -91,5 +89,9 @@ class MonitoringService : Service(), LifecycleOwner {
             .setContentText("Monitoring the hive.")
             .setSmallIcon(R.drawable.ic_launcher_foreground)
             .build()
+    }
+
+    inner class LocalBinder : Binder() {
+        fun getService(): MonitoringService = this@MonitoringService
     }
 }

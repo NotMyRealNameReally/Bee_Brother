@@ -36,6 +36,9 @@ import java.time.LocalDateTime
 import java.time.format.DateTimeFormatter
 import java.util.LinkedList
 import java.util.Queue
+import kotlin.coroutines.resume
+import kotlin.coroutines.resumeWithException
+import kotlin.coroutines.suspendCoroutine
 import kotlin.time.Duration.Companion.seconds
 
 object PeriodicCaptureController {
@@ -46,25 +49,27 @@ object PeriodicCaptureController {
 
     fun startCapture(
         context: Context,
-        config: ConfigViewModel
+        config: ConfigViewModel,
+        service: MonitoringService
     ) {
         imageQueue.clear()
         captureJob = CoroutineScope(Dispatchers.Main).launch {
             while (isActive) {
-                delay(config.delay.seconds)
                 if (config.shouldUpload || config.shouldSaveLocally) {
-                    takePictureAndSave(context, config)
+                    takePictureAndSave(context, service.imageCaptureUseCase, config)
                 }
+                delay(config.delay.seconds)
             }
         }
         saveAndUploadJob = CoroutineScope(Dispatchers.IO).launch {
+            delay(2000)
             while (isActive) {
-                delay(config.delay.seconds)
                 if (config.shouldUpload) {
                     tryUploadImages(context, config, !config.shouldSaveLocally)
                 } else if (config.shouldSaveLocally) {
                     imageQueue.clear() // just clear the queue so it doesn't grow indefinitely
                 }
+                delay(config.delay.seconds)
             }
         }
     }
@@ -80,14 +85,14 @@ object PeriodicCaptureController {
                 context.contentResolver.delete(imageQueue.poll()!!, null, null)
             }
         }
-        imageQueue.clear()
     }
 
-    private fun takePictureAndSave(
+    private suspend fun takePictureAndSave(
         context: Context,
+        imageCapture: ImageCapture,
         config: ConfigViewModel
-    ) {
-        config.imageCapture!!.takePicture(
+    ): Boolean = suspendCoroutine { continuation ->
+        imageCapture.takePicture(
             ContextCompat.getMainExecutor(context),
             object : ImageCapture.OnImageCapturedCallback() {
                 override fun onCaptureSuccess(image: ImageProxy) {
@@ -99,10 +104,12 @@ object PeriodicCaptureController {
                         saveBitmap(context, bitmap, config)
                     }
                     image.close()
+                    continuation.resume(true)
                 }
 
                 override fun onError(exception: ImageCaptureException) {
                     Log.e(TAG, "Capture failed", exception)
+                    continuation.resumeWithException(exception)
                 }
             }
         )

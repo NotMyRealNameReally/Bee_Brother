@@ -1,7 +1,6 @@
 package com.example.beebrother
 
 import android.app.Application
-import androidx.camera.core.ImageCapture
 import androidx.camera.viewfinder.compose.MutableCoordinateTransformer
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
@@ -34,8 +33,6 @@ class ConfigViewModel(application: Application) : AndroidViewModel(application) 
     var shouldSaveLocally by mutableStateOf(false)
 
     var shouldUpload by mutableStateOf(true)
-
-    var imageCapture by mutableStateOf<ImageCapture?>(null)
 
     var coordinateTransformer = MutableCoordinateTransformer()
 
