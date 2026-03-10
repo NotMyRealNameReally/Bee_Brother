@@ -62,14 +62,14 @@ object PeriodicCaptureController {
             }
         }
         saveAndUploadJob = CoroutineScope(Dispatchers.IO).launch {
-            delay(2000)
+            delay(60)
             while (isActive) {
                 if (config.shouldUpload) {
                     tryUploadImages(context, config, !config.shouldSaveLocally)
                 } else if (config.shouldSaveLocally) {
                     imageQueue.clear() // just clear the queue so it doesn't grow indefinitely
                 }
-                delay(config.delay.seconds)
+                delay(60)
             }
         }
     }

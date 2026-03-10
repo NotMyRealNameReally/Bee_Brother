@@ -5,8 +5,10 @@ import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.Service
 import android.content.Intent
+import android.content.pm.ServiceInfo
 import android.os.Binder
 import android.os.IBinder
+import android.os.PowerManager
 import android.view.Surface
 import androidx.camera.core.CameraSelector
 import androidx.camera.core.ImageCapture
@@ -33,6 +35,7 @@ class MonitoringService : Service(), LifecycleOwner {
     private val lifecycleRegistry = LifecycleRegistry(this)
     override val lifecycle: Lifecycle get() = lifecycleRegistry
     private val binder = LocalBinder()
+    private lateinit var wakeLock: PowerManager.WakeLock
 
     override fun onCreate() {
         super.onCreate()
@@ -47,6 +50,11 @@ class MonitoringService : Service(), LifecycleOwner {
                 imageCaptureUseCase
             )
         }, ContextCompat.getMainExecutor(this))
+        val powerManager = getSystemService(POWER_SERVICE) as PowerManager
+        wakeLock = powerManager.newWakeLock(
+            PowerManager.PARTIAL_WAKE_LOCK,
+            "BeeBrother:MonitoringWakeLock"
+        )
     }
 
     fun unbindPreview() {
@@ -63,7 +71,14 @@ class MonitoringService : Service(), LifecycleOwner {
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         lifecycleRegistry.currentState = Lifecycle.State.STARTED
-        startForeground(NOTIFICATION_ID, createNotification())
+        if (!wakeLock.isHeld) {
+            wakeLock.acquire()
+        }
+        startForeground(
+            NOTIFICATION_ID,
+            createNotification(),
+            ServiceInfo.FOREGROUND_SERVICE_TYPE_CAMERA
+        )
         return START_STICKY
     }
 
@@ -74,7 +89,9 @@ class MonitoringService : Service(), LifecycleOwner {
     override fun onDestroy() {
         super.onDestroy()
         lifecycleRegistry.currentState = Lifecycle.State.DESTROYED
-        // The camera use cases will be automatically unbound by CameraX
+        if (wakeLock.isHeld) {
+            wakeLock.release()
+        }
     }
 
     private fun createNotification(): Notification {
