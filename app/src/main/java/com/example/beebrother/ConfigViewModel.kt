@@ -22,11 +22,10 @@ class ConfigViewModel(application: Application) : AndroidViewModel(application) 
 
     private val presetRepository = PresetRepository(application)
     val uploadHistory = MutableStateFlow<List<UploadLog>>(emptyList())
-    var isStarted by mutableStateOf(false)
 
     var delay by mutableIntStateOf(5)
 
-    var url by mutableStateOf("")
+    var url by mutableStateOf("https://bee-monitoring.duckdns.org/api/v1/photo/upload")
 
     var apiKey by mutableStateOf("")
 
