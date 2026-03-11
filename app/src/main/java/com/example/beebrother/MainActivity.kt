@@ -84,6 +84,8 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.beebrother.ui.theme.BeeBrotherTheme
+import com.example.capture.MonitoringService
+import com.example.capture.PeriodicCaptureController
 import kotlinx.coroutines.flow.MutableStateFlow
 
 class MainActivity : ComponentActivity() {
@@ -149,6 +151,7 @@ class MainActivity : ComponentActivity() {
     }
 
     fun exitApplication(context: Context, config: ConfigViewModel) {
+        config.persistSettings()
         if (isBound) {
             unbindService(connection)
             isBound = false
@@ -224,6 +227,7 @@ fun MainMenu(service: MonitoringService?, onSelectScreen: (Screen) -> Unit) {
                 Text("Open camera preview")
             }
             Button(onClick = {
+                config.persistSettings()
                 PeriodicCaptureController.startCapture(context, config, service!!)
                 onSelectScreen(Screen.CAPTURE_STATUS)
             }, buttonModifier) {
@@ -512,7 +516,10 @@ fun SettingsScreen(onSelectScreen: (Screen) -> Unit) {
             Button(onClick = { showPresetDialog = true }, buttonModifier) {
                 Text("Save Current as Preset")
             }
-            Button(onClick = { onSelectScreen(Screen.MENU) }, buttonModifier) {
+            Button(onClick = {
+                config.persistSettings()
+                onSelectScreen(Screen.MENU)
+            }, buttonModifier) {
                 Text("Back")
             }
         }

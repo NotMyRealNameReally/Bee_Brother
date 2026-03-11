@@ -1,4 +1,4 @@
-package com.example.beebrother
+package com.example.capture
 
 import android.app.Notification
 import android.app.NotificationChannel
@@ -19,6 +19,7 @@ import androidx.core.content.ContextCompat
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleOwner
 import androidx.lifecycle.LifecycleRegistry
+import com.example.beebrother.R
 
 class MonitoringService : Service(), LifecycleOwner {
 

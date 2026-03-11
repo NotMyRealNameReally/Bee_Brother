@@ -1,4 +1,4 @@
-package com.example.beebrother
+package com.example.capture
 
 import android.content.ContentValues
 import android.content.Context
@@ -21,6 +21,7 @@ import androidx.compose.ui.unit.IntRect
 import androidx.core.content.ContextCompat
 import androidx.core.graphics.createBitmap
 import androidx.core.graphics.withClip
+import com.example.beebrother.ConfigViewModel
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -228,7 +229,7 @@ object PeriodicCaptureController {
                 } else {
                     config.addUploadLog(false, response.errorBody()?.string())
                     Log.e(TAG, "Upload failed: ${response.code()}")
-                    break // stop retry loop, keep image
+                    break
                 }
             } catch (e: Exception) {
                 Log.e(TAG, "Upload error", e)

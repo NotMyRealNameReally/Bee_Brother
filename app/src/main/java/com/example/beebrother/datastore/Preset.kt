@@ -1,4 +1,4 @@
-package com.example.beebrother.presets
+package com.example.beebrother.datastore
 
 import kotlinx.serialization.Serializable
 
@@ -10,8 +10,6 @@ data class Preset(
     val hiveId: String
 )
 
-// We also need a wrapper class for the list of presets,
-// as DataStore works with top-level objects.
 @Serializable
 data class PresetList(
     val presets: List<Preset> = emptyList()

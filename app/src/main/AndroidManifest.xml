@@ -22,7 +22,7 @@
         android:theme="@style/Theme.BeeBrother"
         android:usesCleartextTraffic="true">
         <service
-            android:name=".MonitoringService"
+            android:name="com.example.capture.MonitoringService"
             android:enabled="true"
             android:exported="false"
             android:foregroundServiceType="camera" />
